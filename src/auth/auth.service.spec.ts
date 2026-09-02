@@ -4,11 +4,12 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { User } from './entities/user.entity';
 import { JwtService } from '@nestjs/jwt';
 import { Repository } from 'typeorm';
-import { CreateUserDto } from './dto';
+import { CreateUserDto, LoginUserDto } from './dto';
 import * as bcrypt from 'bcrypt';
 import {
   BadRequestException,
   InternalServerErrorException,
+  UnauthorizedException,
 } from '@nestjs/common';
 
 describe('AuthService', () => {
@@ -108,7 +109,9 @@ describe('AuthService', () => {
         fullName: 'Test User',
       };
 
-      jest.spyOn(console, 'log').mockImplementation(() => {});
+      const consoleLogSpy = jest
+        .spyOn(console, 'log')
+        .mockImplementation(() => {});
 
       jest
         .spyOn(userRepository, 'save')
@@ -126,6 +129,86 @@ describe('AuthService', () => {
         code: '9999',
         detail: 'Internal server error',
       });
+
+      consoleLogSpy.mockRestore();
+    });
+  });
+
+  describe('login', () => {
+    it('should return a user and a token', async () => {
+      const loginUserDto: LoginUserDto = {
+        email: 'test@test.com',
+        password: 'Test1234',
+      };
+
+      const user = {
+        id: '1',
+        email: loginUserDto.email,
+        fullName: 'Test User',
+        isActive: true,
+        roles: ['user'],
+        password: 'Test1234',
+      };
+
+      jest.spyOn(userRepository, 'findOne').mockResolvedValue(user as User);
+      jest.spyOn(bcrypt, 'compareSync').mockReturnValue(true);
+
+      const result = await authService.login(loginUserDto);
+
+      expect(result).toEqual({
+        user: {
+          id: '1',
+          email: 'test@test.com',
+          fullName: 'Test User',
+          isActive: true,
+          roles: ['user'],
+        },
+        token: 'mocked-jwt-token',
+      });
+
+      expect(result.user.password).not.toBeDefined();
+      expect(result.user.password).toBeUndefined();
+    });
+
+    it('should throw an error if the user does not exist', async () => {
+      const loginUserDto: LoginUserDto = {
+        email: 'test@test.com',
+        password: 'Test1234',
+      };
+
+      jest.spyOn(userRepository, 'findOne').mockResolvedValue(null);
+
+      await expect(authService.login(loginUserDto)).rejects.toThrow(
+        UnauthorizedException,
+      );
+      await expect(authService.login(loginUserDto)).rejects.toThrow(
+        'Credentials are not valid (email)',
+      );
+    });
+
+    it('should throw an error if the password is incorrect', async () => {
+      const loginUserDto: LoginUserDto = {
+        email: 'test@test.com',
+        password: 'Test1234',
+      };
+      const user = {
+        id: '1',
+        email: loginUserDto.email,
+        fullName: 'Test User',
+        isActive: true,
+        roles: ['user'],
+        password: 'Abc123',
+      };
+
+      jest.spyOn(userRepository, 'findOne').mockResolvedValue(user as User);
+      jest.spyOn(bcrypt, 'compareSync').mockReturnValue(false);
+
+      await expect(authService.login(loginUserDto)).rejects.toThrow(
+        UnauthorizedException,
+      );
+      await expect(authService.login(loginUserDto)).rejects.toThrow(
+        'Credentials are not valid (password)',
+      );
     });
   });
 });
