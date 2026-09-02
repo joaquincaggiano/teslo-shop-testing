@@ -211,4 +211,29 @@ describe('AuthService', () => {
       );
     });
   });
+
+  describe('checkAuthStatus', () => {
+    it('should return a user and a token', async () => {
+      const user = {
+        id: '1',
+        email: 'test@test.com',
+        fullName: 'Test User',
+        isActive: true,
+        roles: ['user'],
+      };
+
+      const result = await authService.checkAuthStatus(user as User);
+
+      expect(result).toEqual({
+        user: {
+          id: '1',
+          email: 'test@test.com',
+          fullName: 'Test User',
+          isActive: true,
+          roles: ['user'],
+        },
+        token: 'mocked-jwt-token',
+      });
+    });
+  });
 });
