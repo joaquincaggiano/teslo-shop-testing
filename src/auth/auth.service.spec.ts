@@ -6,7 +6,10 @@ import { JwtService } from '@nestjs/jwt';
 import { Repository } from 'typeorm';
 import { CreateUserDto } from './dto';
 import * as bcrypt from 'bcrypt';
-import { BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 
 describe('AuthService', () => {
   let authService: AuthService;
@@ -45,55 +48,84 @@ describe('AuthService', () => {
     expect(authService).toBeDefined();
   });
 
-  it('should create a user', async () => {
-    const createUserDto: CreateUserDto = {
-      email: 'test@test.com',
-      password: 'Test1234',
-      fullName: 'Test User',
-    };
-
-    const user = {
-      id: '1',
-      email: createUserDto.email,
-      fullName: createUserDto.fullName,
-      isActive: true,
-      roles: ['user'],
-    };
-
-    jest.spyOn(userRepository, 'create').mockReturnValue(user as User);
-    jest.spyOn(bcrypt, 'hashSync').mockReturnValue('mocked-hashed-password');
-
-    const result = await authService.create(createUserDto);
-
-    expect(bcrypt.hashSync).toHaveBeenCalledWith(createUserDto.password, 10);
-    expect(result).toEqual({
-      user: {
-        id: '1',
+  describe('create', () => {
+    it('should create a user', async () => {
+      const createUserDto: CreateUserDto = {
         email: 'test@test.com',
+        password: 'Test1234',
         fullName: 'Test User',
+      };
+
+      const user = {
+        id: '1',
+        email: createUserDto.email,
+        fullName: createUserDto.fullName,
         isActive: true,
         roles: ['user'],
-      },
-      token: 'mocked-jwt-token',
+      };
+
+      jest.spyOn(userRepository, 'create').mockReturnValue(user as User);
+      jest.spyOn(bcrypt, 'hashSync').mockReturnValue('mocked-hashed-password');
+
+      const result = await authService.create(createUserDto);
+
+      expect(bcrypt.hashSync).toHaveBeenCalledWith(createUserDto.password, 10);
+      expect(result).toEqual({
+        user: {
+          id: '1',
+          email: 'test@test.com',
+          fullName: 'Test User',
+          isActive: true,
+          roles: ['user'],
+        },
+        token: 'mocked-jwt-token',
+      });
     });
-  });
 
-  it('should throw an error if the user already exists', async () => {
-    const createUserDto: CreateUserDto = {
-      email: 'test@test.com',
-      password: 'Test1234',
-      fullName: 'Test User',
-    };
+    it('should throw an error if the user already exists', async () => {
+      const createUserDto: CreateUserDto = {
+        email: 'test@test.com',
+        password: 'Test1234',
+        fullName: 'Test User',
+      };
 
-    jest
-      .spyOn(userRepository, 'save')
-      .mockRejectedValue({ code: '23505', detail: 'Email already exists' });
+      jest
+        .spyOn(userRepository, 'save')
+        .mockRejectedValue({ code: '23505', detail: 'Email already exists' });
 
-    await expect(authService.create(createUserDto)).rejects.toThrow(
-      BadRequestException,
-    );
-    await expect(authService.create(createUserDto)).rejects.toThrow(
-      'Email already exists',
-    );
+      await expect(authService.create(createUserDto)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(authService.create(createUserDto)).rejects.toThrow(
+        'Email already exists',
+      );
+    });
+
+    it('should throw an internal server error if the user creation fails', async () => {
+      const createUserDto: CreateUserDto = {
+        email: 'test@test.com',
+        password: 'Test1234',
+        fullName: 'Test User',
+      };
+
+      jest.spyOn(console, 'log').mockImplementation(() => {});
+
+      jest
+        .spyOn(userRepository, 'save')
+        .mockRejectedValue({ code: '9999', detail: 'Internal server error' });
+
+      await expect(authService.create(createUserDto)).rejects.toThrow(
+        InternalServerErrorException,
+      );
+      await expect(authService.create(createUserDto)).rejects.toThrow(
+        'Please check server logs',
+      );
+
+      expect(console.log).toHaveBeenCalled();
+      expect(console.log).toHaveBeenCalledWith({
+        code: '9999',
+        detail: 'Internal server error',
+      });
+    });
   });
 });
