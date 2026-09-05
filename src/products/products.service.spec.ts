@@ -7,13 +7,38 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { User } from '../auth/entities/user.entity';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PaginationDto } from 'src/common/dtos/pagination.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
 
 describe('ProductsService', () => {
   let productsService: ProductsService;
   let productRepository: Repository<Product>;
   let productImageRepository: Repository<ProductImage>;
 
+  let mockQueryRunner: {
+    connect: jest.Mock;
+    startTransaction: jest.Mock;
+    manager: {
+      delete: jest.Mock;
+      save: jest.Mock;
+    };
+    commitTransaction: jest.Mock;
+    release: jest.Mock;
+    rollbackTransaction: jest.Mock;
+  };
+
   beforeEach(async () => {
+    mockQueryRunner = {
+      connect: jest.fn(),
+      startTransaction: jest.fn(),
+      manager: {
+        delete: jest.fn(),
+        save: jest.fn(),
+      },
+      commitTransaction: jest.fn(),
+      release: jest.fn(),
+      rollbackTransaction: jest.fn(),
+    };
+
     const mockQueryBuilder = {
       where: jest.fn().mockReturnThis(),
       leftJoinAndSelect: jest.fn().mockReturnThis(),
@@ -42,17 +67,7 @@ describe('ProductsService', () => {
     };
 
     const mockDataSource = {
-      createQueryRunner: jest.fn().mockReturnValue({
-        connect: jest.fn(),
-        startTransaction: jest.fn(),
-        manager: {
-          delete: jest.fn(),
-          save: jest.fn(),
-        },
-        commitTransaction: jest.fn(),
-        release: jest.fn(),
-        rollbackTransaction: jest.fn(),
-      }),
+      createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -232,6 +247,87 @@ describe('ProductsService', () => {
         slug: 'product-1',
         images: [{ id: '1', url: 'image1.jpg' }],
       });
+    });
+  });
+
+  describe('update', () => {
+    it('should throw an error if the product is not found', async () => {
+      const productId = 'abc';
+      const dto = {} as UpdateProductDto;
+      const user = {} as User;
+
+      jest.spyOn(productRepository, 'preload').mockResolvedValue(null);
+
+      await expect(
+        productsService.update(productId, dto, user),
+      ).rejects.toThrow(NotFoundException);
+      await expect(
+        productsService.update(productId, dto, user),
+      ).rejects.toThrow(`Product with id: ${productId} not found`);
+    });
+
+    it('should update a product successfully', async () => {
+      const productId = 'abc';
+      const dto = {
+        title: 'Updated Product',
+        slug: 'updated-product',
+      } as UpdateProductDto;
+      const user = {
+        id: '1',
+        email: 'test@test.com',
+        fullName: 'Test User',
+      } as User;
+
+      const product = {
+        ...dto,
+        price: 100,
+        description: 'Some description',
+      } as unknown as Product;
+
+      jest.spyOn(productRepository, 'preload').mockResolvedValue(product);
+
+      const updatedProduct = await productsService.update(productId, dto, user);
+
+      expect(updatedProduct).toEqual({
+        id: 'UUID_VALID',
+        title: 'Product 1',
+        price: 100,
+        slug: 'product-1',
+        images: ['image1.jpg'],
+      });
+    });
+
+    it('should update a product and commitTransaction', async () => {
+      const productId = 'abc';
+
+      const dto = {
+        title: 'Updated Product',
+        slug: 'updated-product',
+        images: ['image1.jpg', 'image2.jpg'],
+      } as UpdateProductDto;
+
+      const user = {
+        id: '1',
+        email: 'test@test.com',
+        fullName: 'Test User',
+      } as User;
+
+      const product = {
+        ...dto,
+        price: 100,
+        description: 'Some description',
+      } as unknown as Product;
+
+      jest.spyOn(productRepository, 'preload').mockResolvedValue(product);
+
+      await productsService.update(productId, dto, user);
+
+      expect(mockQueryRunner.connect).toHaveBeenCalled();
+      expect(mockQueryRunner.startTransaction).toHaveBeenCalled();
+      expect(mockQueryRunner.manager.delete).toHaveBeenCalled();
+      expect(mockQueryRunner.manager.save).toHaveBeenCalled();
+      expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
+      expect(mockQueryRunner.release).toHaveBeenCalled();
     });
   });
 });
