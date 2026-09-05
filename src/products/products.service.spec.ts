@@ -14,13 +14,25 @@ describe('ProductsService', () => {
   let productImageRepository: Repository<ProductImage>;
 
   beforeEach(async () => {
+    const mockQueryBuilder = {
+      where: jest.fn().mockReturnThis(),
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue({
+        id: 'UUID_VALID',
+        title: 'Product 1',
+        price: 100,
+        slug: 'product-1',
+        images: [{ id: '1', url: 'image1.jpg' }],
+      }),
+    };
+
     const mockProductRepository = {
       create: jest.fn(),
       save: jest.fn(),
       find: jest.fn(),
       count: jest.fn(),
       findOneBy: jest.fn(),
-      createQueryBuilder: jest.fn(),
+      createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
       preload: jest.fn(),
       remove: jest.fn(),
     };
@@ -208,6 +220,18 @@ describe('ProductsService', () => {
       await expect(productsService.findOne(productId)).rejects.toThrow(
         `Product with ${productId} not found`,
       );
+    });
+
+    it('should find a product by term or slug', async () => {
+      const result = await productsService.findOne('product-1');
+
+      expect(result).toEqual({
+        id: 'UUID_VALID',
+        title: 'Product 1',
+        price: 100,
+        slug: 'product-1',
+        images: [{ id: '1', url: 'image1.jpg' }],
+      });
     });
   });
 });
