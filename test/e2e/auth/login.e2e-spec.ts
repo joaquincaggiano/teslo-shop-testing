@@ -2,11 +2,27 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import * as request from 'supertest';
 import { AppModule } from '../../../src/app.module';
+import { User } from '../../../src/auth/entities/user.entity';
+import { Repository } from 'typeorm';
+import { getRepositoryToken } from '@nestjs/typeorm';
+
+const testingUser = {
+  email: 'testing.user@gmail.com',
+  password: 'Abc123',
+  fullName: 'Testing User',
+};
+
+const testingAdminUser = {
+  email: 'testing.admin@gmail.com',
+  password: 'Abc123',
+  fullName: 'Testing Admin',
+};
 
 describe('Auth Login (e2e)', () => {
   let app: INestApplication;
+  let userRepository: Repository<User>;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -21,9 +37,27 @@ describe('Auth Login (e2e)', () => {
     );
 
     await app.init();
+
+    userRepository = moduleFixture.get<Repository<User>>(
+      getRepositoryToken(User),
+    );
+
+    await userRepository.delete({ email: testingUser.email });
+    await userRepository.delete({ email: testingAdminUser.email });
+
+    await request(app.getHttpServer()).post('/auth/register').send(testingUser);
+
+    await request(app.getHttpServer())
+      .post('/auth/register')
+      .send(testingAdminUser);
+
+    await userRepository.update(
+      { email: testingAdminUser.email },
+      { roles: ['admin'] },
+    );
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await app.close();
   });
 
@@ -60,7 +94,7 @@ describe('Auth Login (e2e)', () => {
 
   it('/auth/login (POST) - worng credentials - password', async () => {
     const dto = {
-      email: 'test2@google.com',
+      email: testingUser.email,
       password: 'Abc1234',
     };
     const response = await request(app.getHttpServer())
@@ -73,8 +107,8 @@ describe('Auth Login (e2e)', () => {
 
   it('/auth/login (POST) - valid credentials', async () => {
     const dto = {
-      email: 'test2@google.com',
-      password: 'Abc123',
+      email: testingUser.email,
+      password: testingUser.password,
     };
     const response = await request(app.getHttpServer())
       .post('/auth/login')
@@ -83,11 +117,11 @@ describe('Auth Login (e2e)', () => {
     expect(response.status).toBe(201);
     expect(response.body).toEqual({
       user: {
-        id: 'b3c43971-fabb-4f98-8ee7-8e6a90b62a97',
-        email: 'test2@google.com',
-        fullName: 'Test Two',
+        id: expect.any(String),
+        email: testingUser.email,
+        fullName: testingUser.fullName,
         isActive: true,
-        roles: ['user', 'super'],
+        roles: ['user'],
       },
       token: expect.any(String),
     });
